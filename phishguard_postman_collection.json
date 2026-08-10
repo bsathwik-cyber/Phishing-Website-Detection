@@ -1,0 +1,178 @@
+{
+  "info": {
+    "_postman_id": "c15e6869-9377-48e0-aecb-8b3f8a731d7f",
+    "name": "PhishGuard API Collection",
+    "description": "Collection of all API endpoints for PhishGuard: Real-Time Phishing URL Detection Using Machine Learning. Runs locally on port 5001.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Single URL Scan",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"http://login-verify-secure-update-bank.xyz/login.php?user=1\"\n}"
+        },
+        "url": {
+          "raw": "http://127.0.0.1:5001/api/predict",
+          "protocol": "http",
+          "host": [
+            "127",
+            "0",
+            "0",
+            "1"
+          ],
+          "port": "5000",
+          "path": [
+            "api",
+            "predict"
+          ]
+        },
+        "description": "Submits a single URL for feature extraction and Random Forest prediction. Returns the threat classification, confidence, risk assessment, and recommendations."
+      },
+      "response": []
+    },
+    {
+      "name": "Bulk URL Scan",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "description": "Upload a CSV containing a column named 'url' or a TXT file containing one URL per line.",
+              "type": "file",
+              "src": []
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://127.0.0.1:5001/api/bulk-predict",
+          "protocol": "http",
+          "host": [
+            "127",
+            "0",
+            "0",
+            "1"
+          ],
+          "port": "5000",
+          "path": [
+            "api",
+            "bulk-predict"
+          ]
+        },
+        "description": "Accepts an uploaded TXT or CSV file containing multiple URLs, runs predictions for each, saves records to the SQLite database, and returns analysis summaries."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Scan History",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:5001/api/history?search=paypal&sortBy=timestamp&order=DESC&limit=10&page=1",
+          "protocol": "http",
+          "host": [
+            "127",
+            "0",
+            "0",
+            "1"
+          ],
+          "port": "5000",
+          "path": [
+            "api",
+            "history"
+          ],
+          "query": [
+            {
+              "key": "search",
+              "value": "paypal",
+              "description": "Search keyword to filter by url, prediction, or risk level (optional)"
+            },
+            {
+              "key": "sortBy",
+              "value": "timestamp",
+              "description": "Column to sort by: url, prediction, confidence, risk_level, timestamp"
+            },
+            {
+              "key": "order",
+              "value": "DESC",
+              "description": "Sorting direction: ASC or DESC"
+            },
+            {
+              "key": "limit",
+              "value": "10",
+              "description": "Number of records to return per page"
+            },
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Page number (1-indexed)"
+            }
+          ]
+        },
+        "description": "Returns a paginated, searchable, and sortable list of past URL scans stored in the SQLite database."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Dashboard Stats",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:5001/api/stats",
+          "protocol": "http",
+          "host": [
+            "127",
+            "0",
+            "0",
+            "1"
+          ],
+          "port": "5000",
+          "path": [
+            "api",
+            "stats"
+          ]
+        },
+        "description": "Retrieves aggregated cybersecurity metrics (total scans, safe/suspicious/phishing counts, average classifier confidence, and trend stats over time) for dashboard charts."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Machine Learning Metrics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:5001/api/model-metrics",
+          "protocol": "http",
+          "host": [
+            "127",
+            "0",
+            "0",
+            "1"
+          ],
+          "port": "5000",
+          "path": [
+            "api",
+            "model-metrics"
+          ]
+        },
+        "description": "Fetches the evaluation statistics for the trained Random Forest Classifier, including validation accuracy, precision, recall, F1-score, cross-validation metrics, confusion matrix, and feature importances."
+      },
+      "response": []
+    }
+  ]
+}
