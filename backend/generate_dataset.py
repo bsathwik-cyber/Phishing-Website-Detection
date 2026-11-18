@@ -57,7 +57,7 @@ def generate_safe_urls():
         protocol = "https://" if random.random() < 0.95 else "http://"
         urls.append(f"{protocol}{domain}{path}{query}")
         
-    return list(set(urls))
+    return sorted(set(urls))
 
 def generate_phishing_urls():
     brand_keywords = ["paypal", "chase", "wellsfargo", "bankofamerica", "netflix", "google", "microsoft", "apple", "amazon", "facebook", "instagram", "dropbox", "yahoo", "stripe"]
@@ -119,7 +119,7 @@ def generate_phishing_urls():
         
         urls.append(f"{protocol}{domain}{path}")
         
-    return list(set(urls))
+    return sorted(set(urls))
 
 def main():
     # Keep the synthetic sample reproducible for development and testing.
