@@ -20,30 +20,30 @@ where py >nul 2>nul
 if not errorlevel 1 (
     py -3.11 --version >nul 2>nul
     if not errorlevel 1 set "PYTHON_LAUNCHER=py -3.11"
+)
 
-    if not defined PYTHON_LAUNCHER (
-        py --version >nul 2>nul
+:: Fall back to the python command on PATH if py -3.11 is not installed.
+if not defined PYTHON_LAUNCHER (
+    where python >nul 2>nul
+    if not errorlevel 1 (
+        python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
+        if not errorlevel 1 set "PYTHON_LAUNCHER=python"
+    )
+)
+
+:: As a final option, use the Python Launcher's default interpreter.
+if not defined PYTHON_LAUNCHER (
+    where py >nul 2>nul
+    if not errorlevel 1 (
+        py -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
         if not errorlevel 1 set "PYTHON_LAUNCHER=py"
     )
 )
 
-:: Fall back to the python command on PATH.
 if not defined PYTHON_LAUNCHER (
-    where python >nul 2>nul
-    if not errorlevel 1 set "PYTHON_LAUNCHER=python"
-)
-
-if not defined PYTHON_LAUNCHER (
-    echo [ERROR] Python was not found.
+    echo [ERROR] Python 3.10 or newer was not found.
     echo Install Python 3.11 from https://www.python.org/downloads/
-    echo During installation, enable the option to add Python to PATH.
-    pause
-    exit /b 1
-)
-
-%PYTHON_LAUNCHER% -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Python 3.10 or newer is required. Python 3.11 is recommended.
+    echo Enable the Python Launcher or add Python to PATH during installation.
     pause
     exit /b 1
 )
