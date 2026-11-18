@@ -100,6 +100,14 @@ Training generates `backend/dataset.csv` when no dataset is present and writes l
 
 These are local build outputs and are intentionally ignored by Git. On the first backend start, the application also attempts to train the model if the model file is missing.
 
+After pulling this version, remove any older local model artifacts and retrain once because URL feature extraction has been corrected. From the repository root:
+
+```powershell
+Remove-Item backend/model/phishing_model.pkl, backend/model/model_metrics.json -ErrorAction SilentlyContinue
+cd backend
+python train_model.py
+```
+
 ### 3. Start the Flask API
 
 From the `backend/` directory, with the virtual environment activated:
