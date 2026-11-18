@@ -40,7 +40,7 @@ echo Waiting for both services. First-time dependency installation and
 echo model training can take several minutes.
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$deadline = (Get-Date).AddMinutes(10); while ((Get-Date) -lt $deadline) { $backend = New-Object System.Net.Sockets.TcpClient; $frontend = New-Object System.Net.Sockets.TcpClient; $backendReady = $false; $frontendReady = $false; try { $backend.Connect('127.0.0.1', 5001); $backendReady = $true } catch {} finally { $backend.Dispose() }; try { $frontend.Connect('127.0.0.1', 3000); $frontendReady = $true } catch {} finally { $frontend.Dispose() }; if ($backendReady -and $frontendReady) { Start-Process 'http://localhost:3000'; Write-Host 'Both services are responding. Opened PhishGuard in your browser.'; exit 0 }; Start-Sleep -Seconds 2 }; Write-Host 'Startup was not confirmed within 10 minutes. Check the Backend and Frontend windows for the specific error.'; exit 1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\wait_for_services.ps1"
 
 if errorlevel 1 (
     echo.
