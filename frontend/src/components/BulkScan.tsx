@@ -81,6 +81,10 @@ export default function BulkScan({ onScanComplete, addNotification }: BulkScanPr
         addNotification("Unsupported file format. Please upload a .csv or .txt file.", "error");
         return;
       }
+      if (selectedFile.size > 1024 * 1024) {
+        addNotification("File is too large. The maximum upload size is 1 MiB.", "error");
+        return;
+      }
       setFile(selectedFile);
       setResults([]);
     }
