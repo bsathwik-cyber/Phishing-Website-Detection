@@ -27,7 +27,8 @@ def main():
     os.makedirs(model_dir, exist_ok=True)
 
     # Generate a deterministic synthetic sample when no dataset is supplied.
-    if not os.path.exists(dataset_path):
+    dataset_generated_this_run = not os.path.exists(dataset_path)
+    if dataset_generated_this_run:
         print("Dataset not found. Generating the documented synthetic dataset...")
         generate_dataset.main()
 
@@ -95,7 +96,7 @@ def main():
 
     metrics = {
         "status": "available",
-        "evaluation_dataset": "synthetic" if os.path.basename(dataset_path) == "dataset.csv" else "user_supplied",
+        "evaluation_dataset": "synthetic_generated_this_run" if dataset_generated_this_run else "existing_dataset_provenance_unverified",
         "evaluation_note": (
             "Metrics are from a stratified hold-out split of the supplied dataset. "
             "The default dataset is synthetic and does not establish real-world phishing detection performance."
