@@ -14,6 +14,7 @@ from database import init_db, save_scan, save_scans_bulk, get_history, get_stats
 from feature_extractor import extract_features
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # Limit uploaded batch files to 1 MiB
 
 # Configure CORS - allow localhost:3000 (standard Next.js default)
 CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
@@ -34,83 +35,54 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BACKEND_DIR, "model", "phishing_model.pkl")
 METRICS_PATH = os.path.join(BACKEND_DIR, "model", "model_metrics.json")
 
-DEMO_METRICS = {
-    "accuracy": 96.40,
-    "precision": 95.80,
-    "recall": 96.10,
-    "f1_score": 95.90,
-    "cross_validation": 95.70,
-    "cv_std": 1.10,
-    "confusion_matrix": {
-        "tn": 478,
-        "fp": 22,
-        "fn": 19,
-        "tp": 481
-    },
-    "feature_importances": {
-        "tld_risk_score": 26.54,
-        "url_length": 18.23,
-        "entropy_score": 14.12,
-        "keywords_count": 10.45,
-        "dots_count": 8.12,
-        "hyphens_count": 6.34,
-        "digits_count": 5.21,
-        "special_chars_count": 4.12,
-        "subdomains_count": 3.05,
-        "https_present": 2.15,
-        "ip_present": 1.12,
-        "redirect_count": 0.52,
-        "at_present": 0.03,
-        "double_slash_present": 0.00
-    },
-    "feature_names": [
-        "url_length", "domain_length", "dots_count", "hyphens_count", "digits_count",
-        "subdomains_count", "https_present", "ip_present", "keywords_count",
-        "special_chars_count", "redirect_count", "at_present", "double_slash_present",
-        "entropy_score", "tld_risk_score"
-    ]
-}
-
 def load_ml_model():
-    """
-    Loads the trained Random Forest model. Trains it if it doesn't exist.
-    Falls back to realistic demo metrics if no model exists and training is bypassed or fails.
+    """Load locally generated model artifacts, training when they are absent.
+
+    Pickle files can execute code when loaded. Only load model artifacts that
+    were generated locally by this project or obtained from a trusted source.
     """
     global MODEL, METRICS, FEATURE_NAMES
-    
-    # Check if model file exists, if not, try to train
+    MODEL = None
+    METRICS = None
+    FEATURE_NAMES = []
+
     if not os.path.exists(MODEL_PATH):
-        print("Model file not found. Running training first...")
+        print("Model file not found. Training the local Random Forest model...")
         try:
             import train_model
             train_model.main()
         except Exception as train_err:
-            print(f"Training failed: {str(train_err)}. Utilizing demo mode.")
-            
-    # Load model if available
-    if os.path.exists(MODEL_PATH):
-        try:
-            with open(MODEL_PATH, "rb") as f:
-                MODEL = pickle.load(f)
-            print("Random Forest Classifier model loaded successfully.")
-        except Exception as e:
-            print(f"Failed to load pickle model: {str(e)}")
-            
-    # Load metrics if available
-    if os.path.exists(METRICS_PATH):
-        try:
-            with open(METRICS_PATH, "r") as f:
-                METRICS = json.load(f)
-            FEATURE_NAMES = METRICS.get("feature_names", [])
-            print("Model metrics loaded successfully from model_metrics.json.")
+            message = f"Model training failed: {train_err}"
+            print(message)
+            METRICS = {"status": "unavailable", "message": message}
             return
-        except Exception as e:
-            print(f"Failed to load model_metrics.json: {str(e)}")
-            
-    # Fallback to realistic demo values if no trained model/metrics exist
-    print("Utilizing realistic demo metrics fallback.")
-    METRICS = DEMO_METRICS
-    FEATURE_NAMES = DEMO_METRICS["feature_names"]
+
+    if not os.path.exists(MODEL_PATH) or not os.path.exists(METRICS_PATH):
+        METRICS = {
+            "status": "unavailable",
+            "message": "Model artifacts are missing. Run python train_model.py from the backend directory."
+        }
+        return
+
+    try:
+        with open(MODEL_PATH, "rb") as model_file:
+            MODEL = pickle.load(model_file)
+
+        with open(METRICS_PATH, "r", encoding="utf-8") as metrics_file:
+            METRICS = json.load(metrics_file)
+
+        FEATURE_NAMES = METRICS.get("feature_names", [])
+        if not FEATURE_NAMES and hasattr(MODEL, "feature_names_in_"):
+            FEATURE_NAMES = list(MODEL.feature_names_in_)
+
+        print("Random Forest model and evaluation metrics loaded.")
+    except Exception as load_error:
+        MODEL = None
+        METRICS = {
+            "status": "unavailable",
+            "message": f"Could not load local model artifacts: {load_error}"
+        }
+        print(METRICS["message"])
 
 # URL Validation Helper
 def is_valid_url(url):
@@ -465,7 +437,10 @@ def get_model_performance():
     try:
         if METRICS is None:
             load_ml_model()
-        return jsonify(METRICS)
+        return jsonify(METRICS or {
+            "status": "unavailable",
+            "message": "Model metrics have not been generated yet."
+        })
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
@@ -507,7 +482,7 @@ def get_dashboard_feature_importance():
         if METRICS is None:
             load_ml_model()
         return jsonify({
-            "feature_importances": METRICS.get("feature_importances", {})
+            "feature_importances": (METRICS or {}).get("feature_importances", {})
         })
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
@@ -525,6 +500,11 @@ def get_dashboard_confusion_matrix():
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 # Error Handler
+@app.errorhandler(413)
+def payload_too_large(e):
+    return jsonify({"error": "Uploaded file is too large. The maximum allowed size is 1 MiB."}), 413
+
+
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
