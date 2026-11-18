@@ -98,8 +98,8 @@ def main():
         "status": "available",
         "evaluation_dataset": "synthetic_generated_this_run" if dataset_generated_this_run else "existing_dataset_provenance_unverified",
         "evaluation_note": (
-            "Metrics are from a stratified hold-out split of the supplied dataset. "
-            "The default dataset is synthetic and does not establish real-world phishing detection performance."
+            "Metrics are from a stratified hold-out split of the dataset file. Dataset provenance is not verified automatically. "
+            "Scores on the built-in synthetic sample do not establish real-world phishing detection performance."
         ),
         "training_rows": int(len(X_train)),
         "test_rows": int(len(X_test)),
