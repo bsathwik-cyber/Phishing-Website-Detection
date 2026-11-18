@@ -1,125 +1,247 @@
 # PhishGuard
 
-> **Real-Time Phishing URL Detection Using Machine Learning**
+**Local phishing-URL classification using a Random Forest model.**
 
-PhishGuard is a local, full-stack cybersecurity application designed to evaluate and detect phishing threats in web URLs using a classic Machine Learning algorithm. It extracts structural, lexical, and security parameters from a given URL in real-time and evaluates them through a locally trained **Random Forest Classifier** to assess its risk level (Safe, Suspicious, or Phishing).
+PhishGuard is a full-stack web application for examining URL strings and classifying them as **Safe**, **Suspicious**, or **Phishing** using URL structure and lexical features. It combines a Next.js interface with a Flask API, a locally trained scikit-learn Random Forest classifier, and SQLite scan history.
 
----
+> **Important limitation:** PhishGuard currently analyses the URL string only. It does not visit the website, inspect page content, resolve DNS, validate TLS certificates, query a live threat-intelligence feed, or block a browser request. A “Safe” result is not a guarantee that a URL is safe. Treat results as an educational screening signal, not a security verdict.
 
-## Key Features
+## Features
 
-1. **Single URL Threat Scanner**: Analyzes individual URLs for threat profiles.
-2. **Real-time Lexical Analyzer**: Highlights URL metrics dynamically as the user types (URL length, domain length, dots, hyphens, and digits count).
-3. **Security Advisory Card**: Evaluates URL features to produce color-coded cards (Green: Safe, Yellow: Suspicious, Red: Phishing) with clear security recommendations.
-4. **Bulk URL Threat Audit**: Upload CSV or TXT lists of URLs, process them in a batch, search/filter through results, and download reports back to CSV.
-5. **Interactive Security Analytics**: Visualize scans, distribution rates, and volume history trends via Recharts.
-6. **Audit History Log**: Keeps a persistent record of all scans in a local SQLite database (supports searching, sorting, and pagination).
-7. **Model Performance Hub**: Displays metrics from training (Accuracy, Precision, Recall, F1 score, Cross-Validation mean), a styled Confusion Matrix grid, and ranked Feature Importances.
+- **Single URL analysis** with a three-level classification, score, extracted features, and user guidance.
+- **Bulk classification** from CSV or TXT files (up to 500 URL rows per request; uploaded request size is capped at 1 MiB).
+- **Local scan history** stored in SQLite, with search, sorting, and pagination.
+- **Dashboard summaries** for the local scan history.
+- **Model evaluation view** showing hold-out metrics, cross-validation summary, feature importances, and labelled-scan confusion-matrix data.
+- **Postman collection** for exercising the HTTP API.
 
----
+## Screenshots
 
-## Tech Stack
+Screenshots are not included in this repository yet. Add genuine application screenshots to `docs/screenshots/` after running the application locally; do not use mock UI images or sample values as evidence of real scans.
 
-### Frontend
-- **Next.js 15** (App Router)
-- **TypeScript**
-- **Tailwind CSS** (v4.0)
-- **Framer Motion** (Fluid micro-animations & transitions)
-- **Recharts** (Interactive data visualizations)
-- **Axios** (API integration client)
-- **Lucide Icons**
+## Architecture
 
-### Backend
-- **Flask** (Python API server)
-- **Flask-CORS** (Origin security management)
-- **Flask-Limiter** (Rate-limiting protection)
-- **SQLite** (Persistent storage)
+```mermaid
+flowchart TD
+    U[User] --> W[Next.js Web Interface]
+    W --> API[Flask API on localhost:5001]
+    API --> V[Input Validation]
+    V --> F[URL Feature Extraction]
+    F --> RF[Random Forest Classifier]
+    RF --> R[Classification and Guidance]
+    R --> DB[(Local SQLite Scan History)]
+    R --> W
+    T[Training Script] --> DS[Synthetic or User-Supplied CSV]
+    DS --> FE[Same URL Feature Extractor]
+    FE --> TR[Training-Only Tuning and Hold-Out Evaluation]
+    TR --> ART[Local Model and Metrics Files]
+    ART --> RF
+```
 
-### Machine Learning
-- **Scikit-Learn** (Random Forest Classifier)
-- **Pandas & NumPy** (Data formatting & extraction)
+## Technology stack
 
----
+| Layer | Technologies |
+|---|---|
+| Frontend | Next.js App Router, React, TypeScript, Tailwind CSS |
+| UI and charts | Framer Motion, Recharts, Lucide React, SWR |
+| Backend | Python, Flask, Flask-CORS, Flask-Limiter |
+| Data and model | SQLite, pandas, NumPy, scikit-learn |
+| API testing | Postman |
 
-## URL Feature Extraction (15 Features)
-PhishGuard parses every URL into the following 15 features:
-1. **URL Length** (lexical length)
-2. **Domain Length** (domain character count)
-3. **Dots Count** (number of `.` characters)
-4. **Hyphens Count** (number of `-` characters)
-5. **Digits Count** (number of numbers in URL)
-6. **Subdomains Count** (number of subdomains)
-7. **HTTPS Present** (1 if HTTPS protocol, 0 otherwise)
-8. **IP Address Domain** (1 if domain is raw IP address, 0 otherwise)
-9. **Suspicious Keywords** (count of words: login, secure, signin, bank, update, verify, etc.)
-10. **Special Characters** (count of characters: ?, =, &, _, %)
-11. **Redirect Patterns** (redirect URL params & subsequent double slashes)
-12. **Presence of `@`** (1 if present, 0 otherwise)
-13. **Presence of `//`** (double slash in path, indicating masking)
-14. **Entropy Score** (Shannon Entropy measuring domain randomness)
-15. **TLD Risk Score** (risk weight mapping of TLD, e.g. `.xyz`, `.top` = high risk; `.gov`, `.edu` = low risk)
+The frontend dependency manifest currently specifies Next.js **16.2.9** and React **19.2.4**. Use a supported Node.js release (20.9 or newer) and check the package manifest if you change dependency versions.
 
----
+## Requirements
 
-## Installation & Local Startup
+- Python 3.10 or newer (Python 3.11 is a sensible development baseline).
+- Node.js 20.9 or newer and npm.
+- Git.
 
-### 1. Backend Setup & Model Training
-Navigate to the backend directory, activate the Python virtual environment, install requirements, train the Random Forest model, and start the Flask server:
+Node.js binaries and Python virtual environments are not bundled with this repository.
+
+## Run locally
+
+The application is intended for local development. The Flask service binds to `127.0.0.1:5001`, and the Next.js development server uses port `3000`.
+
+### 1. Clone the repository
 
 ```bash
-# Navigate to backend
+git clone https://github.com/bsathwik-cyber/Phishing-Website-Detection.git
+cd Phishing-Website-Detection
+```
+
+### 2. Set up the backend
+
+Windows PowerShell:
+
+```powershell
 cd backend
-
-# Create Virtual Environment
-python -m venv venv
-
-# Activate Virtual Environment
-# On Windows (PowerShell):
+py -3.11 -m venv venv
 .\venv\Scripts\Activate.ps1
-# On Windows (CMD):
-.\venv\Scripts\activate.bat
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install Dependencies
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-
-# Generate synthetic dataset and train the Random Forest Classifier
 python train_model.py
+```
 
-# Start Flask API server (runs locally on port 5000)
+macOS / Linux:
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python train_model.py
+```
+
+Training generates `backend/dataset.csv` when no dataset is present and writes locally generated artifacts to `backend/model/`:
+
+- `phishing_model.pkl`
+- `model_metrics.json`
+
+These are local build outputs and are intentionally ignored by Git. On the first backend start, the application also attempts to train the model if the model file is missing.
+
+After pulling this version, remove any older local model artifacts and retrain once because URL feature extraction has been corrected. From the repository root:
+
+```powershell
+Remove-Item backend/model/phishing_model.pkl, backend/model/model_metrics.json -ErrorAction SilentlyContinue
+cd backend
+python train_model.py
+```
+
+### 3. Start the Flask API
+
+From the `backend/` directory, with the virtual environment activated:
+
+```bash
 python app.py
 ```
 
-### 2. Frontend Setup
-Navigate to the frontend directory, install dependencies, and run the Next.js dev server:
+The API listens at `http://127.0.0.1:5001`.
+
+### 4. Set up and start the frontend
+
+Open a second terminal:
 
 ```bash
-# Navigate to frontend (from project root)
 cd frontend
-
-# Install Node modules
 npm install
-
-# Start Next.js development server (runs locally on port 3000)
 npm run dev
 ```
 
-*Note: Since Node.js may not be globally installed on your machine, a portable Node binary is available under the `node-bin` folder in the root directory. To run commands using the local binary, prepend the PATH variable:*
-```powershell
-# In PowerShell:
-$env:Path = "..\node-bin;" + $env:Path; npm run dev
+Open [http://localhost:3000](http://localhost:3000).
+
+### Windows launcher scripts
+
+After setting up the backend virtual environment and running `npm install` in `frontend/`, you can use `run_phishguard.bat` from the repository root to start both development servers and open the browser.
+
+## Training data and evaluation
+
+The default dataset generator creates **synthetic URL examples** from hard-coded domain, path, keyword, and URL-pattern lists. The generator uses a fixed random seed and sorted de-duplication to make its output repeatable.
+
+Synthetic data is useful for exercising the application pipeline, but it is not a representative sample of live phishing activity. Metrics calculated from it should not be presented as real-world detection performance. The model score is not calibrated as a probability of maliciousness.
+
+For an independent experiment, provide a properly licensed and documented CSV at `backend/dataset.csv` with these columns:
+
+| Column | Meaning |
+|---|---|
+| `url` | URL string to analyse |
+| `label` | `0` for legitimate, `1` for phishing |
+
+The training script validates the required columns and binary labels, performs a stratified hold-out split, selects hyperparameters using cross-validation within the training partition, and evaluates the selected model once on the held-out test partition. It does not insert test-set rows into normal user scan history.
+
+When reporting results, document the dataset source, collection date, licence, class balance, split method, and limitations. Avoid relying on accuracy alone; inspect precision, recall, F1, and the confusion matrix.
+
+## URL features
+
+The feature extractor derives 15 URL-only attributes:
+
+1. URL length
+2. Hostname length
+3. Dot count
+4. Hyphen count
+5. Digit count
+6. Estimated subdomain count
+7. HTTPS scheme indicator
+8. IP-address hostname indicator
+9. Suspicious keyword count
+10. Selected special-character count
+11. Redirect-related query/path indicator
+12. Presence of `@`
+13. Repeated slash indicator in the parsed path
+14. Shannon entropy of the URL string
+15. Hand-maintained TLD risk heuristic
+
+These are engineering features, not proof of malicious activity. For example, HTTPS is not proof of trustworthiness, and a TLD risk table is only a coarse heuristic.
+
+## API overview
+
+Base URL: `http://127.0.0.1:5001`
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/predict` | Classify one URL |
+| POST | `/api/bulk-predict` | Classify URLs in an uploaded CSV/TXT file |
+| GET | `/api/history` | Search, sort, and paginate local scan history |
+| GET | `/api/stats` | Retrieve history summary data |
+| GET | `/api/model-metrics` | Retrieve training/evaluation metrics |
+| GET | `/api/dashboard/stats` | Retrieve dashboard summaries |
+| GET | `/api/dashboard/feature-importance` | Retrieve Random Forest feature importances |
+| GET | `/api/dashboard/confusion-matrix` | Calculate matrix from stored scans with supplied labels |
+
+Example single-URL request:
+
+```bash
+curl -X POST http://127.0.0.1:5001/api/predict \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/login"}'
 ```
 
----
+The Postman collection is available at `phishguard_postman_collection.json`.
 
-## API Documentation
+## Local data and privacy
 
-- `POST /api/predict`: Analyzes a single URL.
-  - Body: `{"url": "https://example.com"}`
-- `POST /api/bulk-predict`: Scans a list of URLs from an uploaded file (CSV or TXT).
-  - Body: Form-data with key `file`.
-- `GET /api/history`: Retrieves page-wise, sortable, and searchable scan history logs.
-  - Query params: `search`, `sortBy`, `order`, `limit`, `page`.
-- `GET /api/stats`: Retrieves stats cards values and charting data.
-- `GET /api/model-metrics`: Returns Random Forest model validation scores, confusion matrix, and feature importances.
+- Scan history is stored in `backend/phishguard.db` on the machine running the backend.
+- URLs can contain personal, account, or internal information. Treat the database and exported CSV files as sensitive.
+- The database, generated dataset, trained model, and generated metrics are excluded from version control.
+- The current application has no user authentication or multi-user access control. Do not expose the Flask service to the public internet.
+- The API accepts URL strings; the current implementation does not fetch or open the submitted websites.
+
+See [SECURITY.md](SECURITY.md) for safe-use and disclosure guidance.
+
+## Tests
+
+From the repository root:
+
+```bash
+python -m unittest discover -s backend/tests -v
+```
+
+The test suite covers URL-feature extraction behavior. It does not replace manual end-to-end testing of the frontend, API, file uploads, or model training.
+
+## Repository structure
+
+```text
+.
+├── backend/
+│   ├── app.py
+│   ├── database.py
+│   ├── feature_extractor.py
+│   ├── generate_dataset.py
+│   ├── requirements.txt
+│   ├── train_model.py
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   ├── package.json
+│   └── package-lock.json
+├── .github/workflows/
+├── .gitignore
+├── SECURITY.md
+├── README.md
+├── diagnostic.py
+└── phishguard_postman_collection.json
+```
+
+## Current status
+
+PhishGuard is a local educational prototype. It is not a production anti-phishing service, browser protection extension, threat-intelligence platform, or guarantee that a URL is safe.

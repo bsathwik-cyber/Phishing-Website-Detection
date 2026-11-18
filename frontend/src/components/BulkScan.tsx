@@ -58,6 +58,10 @@ export default function BulkScan({ onScanComplete, addNotification }: BulkScanPr
         addNotification("Unsupported file format. Please upload a .csv or .txt file.", "error");
         return;
       }
+      if (selectedFile.size > 1024 * 1024) {
+        addNotification("File is too large. The maximum upload size is 1 MiB.", "error");
+        return;
+      }
       setFile(selectedFile);
       setResults([]);
     }
@@ -75,6 +79,10 @@ export default function BulkScan({ onScanComplete, addNotification }: BulkScanPr
       
       if (ext !== "csv" && ext !== "txt") {
         addNotification("Unsupported file format. Please upload a .csv or .txt file.", "error");
+        return;
+      }
+      if (selectedFile.size > 1024 * 1024) {
+        addNotification("File is too large. The maximum upload size is 1 MiB.", "error");
         return;
       }
       setFile(selectedFile);
@@ -218,7 +226,7 @@ export default function BulkScan({ onScanComplete, addNotification }: BulkScanPr
             <div className="text-center">
               <span className="font-semibold text-cyber-cyan">Click to upload</span> or drag and drop
             </div>
-            <div className="text-xs text-gray-500">Supports CSV or TXT files (Max 500 URLs per batch)</div>
+            <div className="text-xs text-gray-500">CSV or TXT · Up to 500 URLs · Maximum file size 1 MiB</div>
             <input
               type="file"
               ref={fileInputRef}

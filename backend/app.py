@@ -1,5 +1,6 @@
 import os
 import re
+import ipaddress
 import pickle
 import json
 import pandas as pd
@@ -8,12 +9,14 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
+from urllib.parse import urlsplit
 
 # Import database and ML modules
 from database import init_db, save_scan, save_scans_bulk, get_history, get_stats
 from feature_extractor import extract_features
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # Limit uploaded batch files to 1 MiB
 
 # Configure CORS - allow localhost:3000 (standard Next.js default)
 CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
@@ -30,191 +33,176 @@ MODEL = None
 METRICS = None
 FEATURE_NAMES = []
 
+
+class ModelUnavailableError(RuntimeError):
+    """Raised when the Random Forest model cannot serve predictions."""
+
+
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BACKEND_DIR, "model", "phishing_model.pkl")
 METRICS_PATH = os.path.join(BACKEND_DIR, "model", "model_metrics.json")
 
-DEMO_METRICS = {
-    "accuracy": 96.40,
-    "precision": 95.80,
-    "recall": 96.10,
-    "f1_score": 95.90,
-    "cross_validation": 95.70,
-    "cv_std": 1.10,
-    "confusion_matrix": {
-        "tn": 478,
-        "fp": 22,
-        "fn": 19,
-        "tp": 481
-    },
-    "feature_importances": {
-        "tld_risk_score": 26.54,
-        "url_length": 18.23,
-        "entropy_score": 14.12,
-        "keywords_count": 10.45,
-        "dots_count": 8.12,
-        "hyphens_count": 6.34,
-        "digits_count": 5.21,
-        "special_chars_count": 4.12,
-        "subdomains_count": 3.05,
-        "https_present": 2.15,
-        "ip_present": 1.12,
-        "redirect_count": 0.52,
-        "at_present": 0.03,
-        "double_slash_present": 0.00
-    },
-    "feature_names": [
-        "url_length", "domain_length", "dots_count", "hyphens_count", "digits_count",
-        "subdomains_count", "https_present", "ip_present", "keywords_count",
-        "special_chars_count", "redirect_count", "at_present", "double_slash_present",
-        "entropy_score", "tld_risk_score"
-    ]
-}
-
 def load_ml_model():
-    """
-    Loads the trained Random Forest model. Trains it if it doesn't exist.
-    Falls back to realistic demo metrics if no model exists and training is bypassed or fails.
+    """Load locally generated model artifacts, training when they are absent.
+
+    Pickle files can execute code when loaded. Only load model artifacts that
+    were generated locally by this project or obtained from a trusted source.
     """
     global MODEL, METRICS, FEATURE_NAMES
-    
-    # Check if model file exists, if not, try to train
+    MODEL = None
+    METRICS = None
+    FEATURE_NAMES = []
+
     if not os.path.exists(MODEL_PATH):
-        print("Model file not found. Running training first...")
+        print("Model file not found. Training the local Random Forest model...")
         try:
             import train_model
             train_model.main()
         except Exception as train_err:
-            print(f"Training failed: {str(train_err)}. Utilizing demo mode.")
-            
-    # Load model if available
-    if os.path.exists(MODEL_PATH):
-        try:
-            with open(MODEL_PATH, "rb") as f:
-                MODEL = pickle.load(f)
-            print("Random Forest Classifier model loaded successfully.")
-        except Exception as e:
-            print(f"Failed to load pickle model: {str(e)}")
-            
-    # Load metrics if available
-    if os.path.exists(METRICS_PATH):
-        try:
-            with open(METRICS_PATH, "r") as f:
-                METRICS = json.load(f)
-            FEATURE_NAMES = METRICS.get("feature_names", [])
-            print("Model metrics loaded successfully from model_metrics.json.")
+            message = f"Model training failed: {train_err}"
+            print(message)
+            METRICS = {"status": "unavailable", "message": message}
             return
-        except Exception as e:
-            print(f"Failed to load model_metrics.json: {str(e)}")
-            
-    # Fallback to realistic demo values if no trained model/metrics exist
-    print("Utilizing realistic demo metrics fallback.")
-    METRICS = DEMO_METRICS
-    FEATURE_NAMES = DEMO_METRICS["feature_names"]
+
+    if not os.path.exists(MODEL_PATH) or not os.path.exists(METRICS_PATH):
+        METRICS = {
+            "status": "unavailable",
+            "message": "Model artifacts are missing. Run python train_model.py from the backend directory."
+        }
+        return
+
+    try:
+        with open(MODEL_PATH, "rb") as model_file:
+            MODEL = pickle.load(model_file)
+
+        with open(METRICS_PATH, "r", encoding="utf-8") as metrics_file:
+            METRICS = json.load(metrics_file)
+
+        FEATURE_NAMES = METRICS.get("feature_names", [])
+        if not FEATURE_NAMES and hasattr(MODEL, "feature_names_in_"):
+            FEATURE_NAMES = list(MODEL.feature_names_in_)
+
+        print("Random Forest model and evaluation metrics loaded.")
+    except Exception as load_error:
+        MODEL = None
+        METRICS = {
+            "status": "unavailable",
+            "message": f"Could not load local model artifacts: {load_error}"
+        }
+        print(METRICS["message"])
 
 # URL Validation Helper
 def is_valid_url(url):
-    """
-    Checks if a URL has a valid structure, supporting standard domains, IP addresses, and localhost.
-    """
-    if not url:
+    """Validate an HTTP(S) URL without making a network request."""
+    if not isinstance(url, str) or not url.strip():
         return False
-        
-    # Standard domain regex
-    domain_pattern = re.compile(
-        r'^(https?://)?'  # protocol (optional)
-        r'([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}'  # domain with TLD
-        r'(:\d+)?'  # port (optional)
-        r'(/.*)?$'  # path (optional)
-    )
-    
-    # IPv4 address regex
-    ip_pattern = re.compile(
-        r'^(https?://)?'  # protocol (optional)
-        r'(?:\d{1,3}\.){3}\d{1,3}'  # IP octets
-        r'(:\d+)?'  # port (optional)
-        r'(/.*)?$'  # path (optional)
-    )
-    
-    # Localhost regex
-    localhost_pattern = re.compile(
-        r'^(https?://)?'  # protocol (optional)
-        r'localhost'  # localhost
-        r'(:\d+)?'  # port (optional)
-        r'(/.*)?$'  # path (optional)
-    )
-    
-    return bool(domain_pattern.match(url) or ip_pattern.match(url) or localhost_pattern.match(url))
+
+    candidate = url.strip()
+    if "://" not in candidate:
+        candidate = "http://" + candidate
+
+    try:
+        parsed = urlsplit(candidate)
+        hostname = parsed.hostname
+        # Accessing .port validates malformed and out-of-range ports.
+        _ = parsed.port
+    except ValueError:
+        return False
+
+    if parsed.scheme.lower() not in {"http", "https"} or not hostname:
+        return False
+
+    hostname = hostname.rstrip(".").lower()
+    if hostname == "localhost":
+        return True
+
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+
+    if len(hostname) > 253:
+        return False
+
+    labels = hostname.split(".")
+    if len(labels) < 2:
+        return False
+
+    for label in labels:
+        if (
+            not label
+            or len(label) > 63
+            or label.startswith("-")
+            or label.endswith("-")
+            or not all(char.isalnum() or char == "-" for char in label)
+        ):
+            return False
+
+    tld = labels[-1]
+    return (len(tld) >= 2 and tld.isalpha()) or tld.startswith("xn--")
 
 def sanitize_url(url):
     """
     Sanitizes URL input by removing whitespaces and control characters.
     """
+    if not isinstance(url, str):
+        return ""
     if not url:
         return ""
-    # Strip whitespaces and control characters
+    # Strip surrounding whitespace and remove control characters.
     url = url.strip()
     url = re.sub(r'[\r\n\t]', '', url)
     return url
 
 def get_prediction_details(url):
-    """
-    Runs URL through the model and computes risk category, confidence, and security recommendations.
-    Includes a heuristic rules fallback if the ML model is not loaded.
-    """
-    # Extract features
+    """Classify a URL using the trained Random Forest model."""
+    if MODEL is None:
+        raise ModelUnavailableError(
+            "The Random Forest model is unavailable. Check the backend training log and run python train_model.py."
+        )
+
     features = extract_features(url)
-    
-    # 1. Prediction using Model if loaded, else use heuristic rules fallback
-    if MODEL is not None:
-        try:
-            # Convert feature dict into DataFrame with correct column order
-            input_data = pd.DataFrame([features])[FEATURE_NAMES]
-            # Predict probabilities (class 0: Safe, class 1: Phishing)
-            probabilities = MODEL.predict_proba(input_data)[0]
-            p_phish = probabilities[1]
-        except Exception as e:
-            print(f"Error predicting with ML model: {str(e)}. Falling back to heuristic rules.")
-            p_phish = calculate_heuristic_risk(features)
-    else:
-        p_phish = calculate_heuristic_risk(features)
-        
-    # Determine Category, Confidence, and Risk Level
-    # We map the continuous probability space to 3 categories:
-    # p_phish < 0.35 -> Safe, Low Risk
-    # 0.35 <= p_phish < 0.65 -> Suspicious, Medium Risk
-    # p_phish >= 0.65 -> Phishing, High Risk
+    try:
+        input_data = pd.DataFrame([features])[FEATURE_NAMES]
+        class_probabilities = MODEL.predict_proba(input_data)[0]
+        classes = list(MODEL.classes_)
+        if 1 not in classes or 0 not in classes:
+            raise ValueError("The loaded model does not contain both expected classes (0 and 1).")
+        p_phish = float(class_probabilities[classes.index(1)])
+    except Exception as prediction_error:
+        raise ModelUnavailableError(
+            f"The Random Forest model could not evaluate this URL: {prediction_error}"
+        ) from prediction_error
+
     if p_phish < 0.35:
         prediction = "Safe"
         confidence = (1 - p_phish) * 100
         risk_level = "Low"
         recommendations = [
-            "This URL is classified as Safe. The URL features match standard trustworthy domains.",
-            "Verify the connection has a valid SSL certificate (HTTPS indicator in address bar).",
-            "Always inspect the domain name spelling to avoid lookalike domains (typosquatting).",
-            "Continue using standard browser protection and verify authentication pages before entering passwords."
+            "This URL has a low score from the URL-feature classifier; this does not guarantee that the destination is safe.",
+            "Check the exact domain spelling and confirm the link came from a trusted source.",
+            "Use browser protection and avoid entering sensitive information when you are unsure."
         ]
     elif p_phish < 0.65:
         prediction = "Suspicious"
         confidence = max(p_phish, 1 - p_phish) * 100
         risk_level = "Medium"
         recommendations = [
-            "This URL is flagged as Suspicious. It exhibits features commonly seen in phishing attempts (e.g., suspicious keywords or special character counts).",
-            "DO NOT enter passwords, credit card numbers, or personal details on this webpage.",
-            "If this link was received via email, SMS, or chat, verify the identity of the sender through an independent channel.",
-            "Inspect the domain name carefully. Check if it is a subdomain of an unfamiliar top-level domain."
+            "This URL has a borderline score from the URL-feature classifier.",
+            "Do not enter credentials or payment information until you independently verify the destination.",
+            "Check the domain spelling and confirm the sender through a separate trusted channel."
         ]
     else:
         prediction = "Phishing"
         confidence = p_phish * 100
         risk_level = "High"
         recommendations = [
-            "DANGER: This URL is classified as Phishing! It strongly exhibits signature patterns of malicious spoofed sites.",
-            "CLOSE the browser tab immediately to protect your session.",
-            "DO NOT download any files, click links, or fill out forms on this website.",
-            "If you entered credentials, change your passwords on the real website immediately and enable Two-Factor Authentication (2FA)."
+            "This URL has a high score from the URL-feature classifier and should be treated with caution.",
+            "Do not enter credentials, download files, or submit personal information.",
+            "Verify the destination using the organisation's known official website or contact channel."
         ]
-        
+
     return {
         "prediction": prediction,
         "probability_score": round(p_phish, 4),
@@ -224,40 +212,6 @@ def get_prediction_details(url):
         "recommendations": recommendations
     }
 
-def calculate_heuristic_risk(features):
-    """
-    Computes heuristic phishing probability based on URL features as a fallback classifier.
-    """
-    p_phish = 0.1
-    
-    # Feature weights mirroring model characteristics
-    if features.get("tld_risk_score", 0.5) > 0.6:
-        p_phish += 0.35
-    elif features.get("tld_risk_score", 0.5) < 0.2:
-        p_phish -= 0.1
-        
-    if features.get("keywords_count", 0) > 0:
-        p_phish += min(0.4, 0.2 * features["keywords_count"])
-        
-    if features.get("ip_present", 0) > 0:
-        p_phish += 0.45
-        
-    if features.get("at_present", 0) > 0:
-        p_phish += 0.35
-        
-    if features.get("double_slash_present", 0) > 0:
-        p_phish += 0.25
-        
-    if features.get("hyphens_count", 0) > 2:
-        p_phish += 0.15
-        
-    if features.get("url_length", 0) > 75:
-        p_phish += 0.15
-        
-    if features.get("https_present", 1) == 0:
-        p_phish += 0.15
-        
-    return min(0.99, max(0.01, p_phish))
 
 # --- ENDPOINTS ---
 
@@ -273,6 +227,8 @@ def predict_single():
             return jsonify({"error": "No URL provided in request body."}), 400
             
         raw_url = data["url"]
+        if not isinstance(raw_url, str):
+            return jsonify({"error": "URL must be provided as a string."}), 400
         url = sanitize_url(raw_url)
         
         if not url:
@@ -297,6 +253,8 @@ def predict_single():
             "recommendations": res["recommendations"]
         })
         
+    except ModelUnavailableError as e:
+        return jsonify({"error": str(e)}), 503
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
@@ -347,7 +305,13 @@ def predict_bulk():
                     if pd.isna(u):
                         continue
                     u = str(u).strip()
-                    act = str(row[label_col]).strip() if (label_col is not None and not pd.isna(row[label_col])) else None
+                    act = str(row[label_col]).strip().lower() if (label_col is not None and not pd.isna(row[label_col])) else None
+                    if act in {"1", "1.0", "phishing", "malicious"}:
+                        act = "1"
+                    elif act in {"0", "0.0", "safe", "legitimate", "benign"}:
+                        act = "0"
+                    else:
+                        act = None
                     urls_with_labels.append((u, act))
             except Exception as csv_err:
                 return jsonify({"error": f"Failed to parse CSV file: {str(csv_err)}"}), 400
@@ -411,6 +375,8 @@ def predict_bulk():
             "results": results
         })
         
+    except ModelUnavailableError as e:
+        return jsonify({"error": str(e)}), 503
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
@@ -465,7 +431,10 @@ def get_model_performance():
     try:
         if METRICS is None:
             load_ml_model()
-        return jsonify(METRICS)
+        return jsonify(METRICS or {
+            "status": "unavailable",
+            "message": "Model metrics have not been generated yet."
+        })
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
@@ -507,7 +476,7 @@ def get_dashboard_feature_importance():
         if METRICS is None:
             load_ml_model()
         return jsonify({
-            "feature_importances": METRICS.get("feature_importances", {})
+            "feature_importances": (METRICS or {}).get("feature_importances", {})
         })
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
@@ -525,6 +494,11 @@ def get_dashboard_confusion_matrix():
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 # Error Handler
+@app.errorhandler(413)
+def payload_too_large(e):
+    return jsonify({"error": "Uploaded file is too large. The maximum allowed size is 1 MiB."}), 413
+
+
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
