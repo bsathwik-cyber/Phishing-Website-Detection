@@ -29,6 +29,53 @@ if not exist "%~dp0frontend\package.json" (
     exit /b 1
 )
 
+:: Verify system runtimes before opening the service windows.
+where node >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] Node.js is not installed or is not available on PATH.
+    echo Install Node.js 20.9 or newer from https://nodejs.org/
+    pause
+    exit /b 1
+)
+
+where npm >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] npm was not found. Reinstall Node.js with npm included.
+    pause
+    exit /b 1
+)
+
+node -e "const v=process.versions.node.split('.').map(Number); process.exit(v[0] > 20 || (v[0] === 20 && v[1] >= 9) ? 0 : 1)" >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] Node.js 20.9 or newer is required by this Next.js project.
+    node --version
+    echo Download a supported version from https://nodejs.org/
+    pause
+    exit /b 1
+)
+
+set "PYTHON_LAUNCHER="
+where py >nul 2>nul
+if not errorlevel 1 (
+    py -3.11 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
+    if not errorlevel 1 set "PYTHON_LAUNCHER=py -3.11"
+)
+
+if not defined PYTHON_LAUNCHER (
+    where python >nul 2>nul
+    if not errorlevel 1 (
+        python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul
+        if not errorlevel 1 set "PYTHON_LAUNCHER=python"
+    )
+)
+
+if not defined PYTHON_LAUNCHER (
+    echo [ERROR] Python 3.10 or newer was not found.
+    echo Install Python 3.11 from https://www.python.org/downloads/
+    pause
+    exit /b 1
+)
+
 echo Opening backend setup in a new window...
 start "PhishGuard Backend" "%ComSpec%" /k ""%~dp0run_backend.bat""
 
