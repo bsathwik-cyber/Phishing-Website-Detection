@@ -1,85 +1,98 @@
 import os
-import subprocess
+import shutil
 import socket
 import sys
 
-def check_file_exists(path):
+
+def check_file_exists(path, label=None):
     exists = os.path.exists(path)
-    print(f"Checking path: {path} -> {'[OK]' if exists else '[MISSING]'}")
+    description = label or path
+    print(f"Checking {description}: {'[OK]' if exists else '[MISSING]'}")
     return exists
 
-def run_command_diagnostic(args, env=None):
+
+def run_command_diagnostic(args):
+    import subprocess
+
     try:
-        res = subprocess.run(args, capture_output=True, text=True, env=env, timeout=5)
-        print(f"Running: {' '.join(args)} -> [SUCCESS]")
-        print(f"  Stdout: {res.stdout.strip()[:100]}")
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        print(f"Running {' '.join(args)} -> [OK]")
+        output = result.stdout.strip() or result.stderr.strip()
+        if output:
+            print(f"  {output[:160]}")
         return True
-    except Exception as e:
-        print(f"Running: {' '.join(args)} -> [FAILED]: {str(e)}")
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"Running {' '.join(args)} -> [FAILED]: {error}")
         return False
 
+
 def check_port(port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(1)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
     try:
-        s.bind(("127.0.0.1", port))
-        bound = False # Port is free
-    except socket.error:
-        bound = True # Port is occupied
+        sock.bind(("127.0.0.1", port))
+        occupied = False
+    except OSError:
+        occupied = True
     finally:
-        s.close()
-    print(f"Testing port {port} -> {'[OCCUPIED]' if bound else '[FREE]'}")
-    return bound
+        sock.close()
+
+    print(f"Port {port}: {'[OCCUPIED]' if occupied else '[FREE]'}")
+    return occupied
+
 
 def main():
-    print("====================================================")
-    print("           PHISHGUARD SYSTEM DIAGNOSTICS            ")
-    print("====================================================\n")
-    
     root_dir = os.path.dirname(os.path.abspath(__file__))
-    print(f"Diagnostic Root Directory: {root_dir}\n")
-    
-    # 1. Check folder paths
     backend_dir = os.path.join(root_dir, "backend")
     frontend_dir = os.path.join(root_dir, "frontend")
-    node_bin_dir = os.path.abspath(os.path.join(root_dir, "..", "node-bin"))
-    
-    print("--- Checking Folders ---")
-    check_file_exists(backend_dir)
-    check_file_exists(frontend_dir)
-    check_file_exists(node_bin_dir)
-    print("")
 
-    # 2. Check binary paths
-    print("--- Checking Executables ---")
-    node_exe = os.path.join(node_bin_dir, "node.exe")
-    npm_cmd = os.path.join(node_bin_dir, "npm.cmd")
-    python_exe = os.path.join(backend_dir, "venv", "Scripts", "python.exe")
-    model_pkl = os.path.join(backend_dir, "model", "phishing_model.pkl")
-    
-    check_file_exists(node_exe)
-    check_file_exists(npm_cmd)
-    check_file_exists(python_exe)
-    check_file_exists(model_pkl)
-    print("")
+    print("=" * 58)
+    print("PHISHGUARD LOCAL DEVELOPMENT DIAGNOSTICS")
+    print("=" * 58)
+    print(f"Repository: {root_dir}\n")
 
-    # 3. Test execution
-    print("--- Executing Binary Verifications ---")
-    if os.path.exists(node_exe):
-        run_command_diagnostic([node_exe, "-v"])
-    if os.path.exists(python_exe):
-        run_command_diagnostic([python_exe, "-V"])
-    print("")
+    print("--- Project folders ---")
+    check_file_exists(backend_dir, "backend directory")
+    check_file_exists(frontend_dir, "frontend directory")
 
-    # 4. Check network ports
-    print("--- Checking Ports (Conflicts check) ---")
+    print("\n--- Runtime tools ---")
+    python_exe = sys.executable
+    node_exe = shutil.which("node")
+    npm_exe = shutil.which("npm")
+
+    run_command_diagnostic([python_exe, "--version"])
+    if node_exe:
+        run_command_diagnostic([node_exe, "--version"])
+    else:
+        print("Node.js: [MISSING] Install Node.js 20.9 or newer.")
+
+    if npm_exe:
+        run_command_diagnostic([npm_exe, "--version"])
+    else:
+        print("npm: [MISSING] Install Node.js with npm.")
+
+    print("\n--- Optional local artifacts ---")
+    check_file_exists(
+        os.path.join(backend_dir, "venv"),
+        "backend virtual environment (create during setup)",
+    )
+    check_file_exists(
+        os.path.join(backend_dir, "model", "phishing_model.pkl"),
+        "trained model (generated during training)",
+    )
+
+    print("\n--- Development ports ---")
     check_port(3000)
     check_port(5001)
-    print("")
 
-    print("====================================================")
-    print("Diagnostics completed. Please review the log above.")
-    print("====================================================")
+    print("\nDiagnostics completed. Missing model/venv items can be created by following README.md.")
+
 
 if __name__ == "__main__":
     main()
