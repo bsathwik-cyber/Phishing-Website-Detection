@@ -1,4 +1,5 @@
 from urllib.parse import urlparse
+import ipaddress
 import math
 import re
 
@@ -15,7 +16,9 @@ def extract_features(url):
         
     try:
         parsed = urlparse(parsed_url)
-        domain = parsed.netloc
+        # Use the parsed hostname rather than netloc so user-info and ports
+        # are not mistaken for part of the registered host.
+        domain = parsed.hostname or ""
         path = parsed.path
         query = parsed.query
     except Exception:
@@ -51,10 +54,12 @@ def extract_features(url):
     # 7. HTTPS Present
     https_present = 1 if url.startswith('https://') else 0
     
-    # 8. IP Address Usage
-    # Pattern to match standard IPv4 address in domain
-    ip_pattern = r'^(?:\d{1,3}\.){3}\d{1,3}$'
-    ip_present = 1 if re.match(ip_pattern, domain) else 0
+    # 8. IP Address Usage (IPv4 or IPv6)
+    try:
+        ipaddress.ip_address(domain)
+        ip_present = 1
+    except ValueError:
+        ip_present = 0
     
     # 9. Suspicious Keywords Count
     keywords = ["login", "signin", "verify", "secure", "bank", "update", "account", 
@@ -70,8 +75,8 @@ def extract_features(url):
     # Count occurrence of redirect parameters + presence of multiple slashes inside path/query
     redirect_kw = ["redirect", "url", "link", "to", "goto", "destination"]
     redirect_kw_count = sum(1 for kw in redirect_kw if kw in query.lower())
-    # Count of // after protocol slash (e.g. in path/query)
-    double_slash_count_after_proto = url[7:].count('//')
+    # Count repeated slashes in the parsed path, not in the protocol separator.
+    double_slash_count_after_proto = path.count('//')
     redirect_count = redirect_kw_count + double_slash_count_after_proto
     
     # 12. Presence Of @
