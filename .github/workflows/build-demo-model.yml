@@ -1,6 +1,15 @@
 name: Build downloadable demo model
 
 on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "backend/feature_extractor.py"
+      - "backend/generate_dataset.py"
+      - "backend/train_model.py"
+      - "backend/model-requirements.txt"
+      - "docs/model-card.md"
+      - ".github/workflows/build-demo-model.yml"
   push:
     branches: ["main"]
     paths:
