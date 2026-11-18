@@ -1,5 +1,5 @@
 import os
-import re
+import ipaddress
 import pickle
 import json
 import pandas as pd
@@ -8,6 +8,7 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
+from urllib.parse import urlsplit
 
 # Import database and ML modules
 from database import init_db, save_scan, save_scans_bulk, get_history, get_stats
@@ -86,45 +87,64 @@ def load_ml_model():
 
 # URL Validation Helper
 def is_valid_url(url):
-    """
-    Checks if a URL has a valid structure, supporting standard domains, IP addresses, and localhost.
-    """
-    if not url:
+    """Validate an HTTP(S) URL without making a network request."""
+    if not isinstance(url, str) or not url.strip():
         return False
-        
-    # Standard domain regex
-    domain_pattern = re.compile(
-        r'^(https?://)?'  # protocol (optional)
-        r'([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}'  # domain with TLD
-        r'(:\d+)?'  # port (optional)
-        r'(/.*)?$'  # path (optional)
-    )
-    
-    # IPv4 address regex
-    ip_pattern = re.compile(
-        r'^(https?://)?'  # protocol (optional)
-        r'(?:\d{1,3}\.){3}\d{1,3}'  # IP octets
-        r'(:\d+)?'  # port (optional)
-        r'(/.*)?$'  # path (optional)
-    )
-    
-    # Localhost regex
-    localhost_pattern = re.compile(
-        r'^(https?://)?'  # protocol (optional)
-        r'localhost'  # localhost
-        r'(:\d+)?'  # port (optional)
-        r'(/.*)?$'  # path (optional)
-    )
-    
-    return bool(domain_pattern.match(url) or ip_pattern.match(url) or localhost_pattern.match(url))
+
+    candidate = url.strip()
+    if "://" not in candidate:
+        candidate = "http://" + candidate
+
+    try:
+        parsed = urlsplit(candidate)
+        hostname = parsed.hostname
+        # Accessing .port validates malformed and out-of-range ports.
+        _ = parsed.port
+    except ValueError:
+        return False
+
+    if parsed.scheme.lower() not in {"http", "https"} or not hostname:
+        return False
+
+    hostname = hostname.rstrip(".").lower()
+    if hostname == "localhost":
+        return True
+
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+
+    if len(hostname) > 253:
+        return False
+
+    labels = hostname.split(".")
+    if len(labels) < 2:
+        return False
+
+    for label in labels:
+        if (
+            not label
+            or len(label) > 63
+            or label.startswith("-")
+            or label.endswith("-")
+            or not all(char.isalnum() or char == "-" for char in label)
+        ):
+            return False
+
+    tld = labels[-1]
+    return (len(tld) >= 2 and tld.isalpha()) or tld.startswith("xn--")
 
 def sanitize_url(url):
     """
     Sanitizes URL input by removing whitespaces and control characters.
     """
+    if not isinstance(url, str):
+        return ""
     if not url:
         return ""
-    # Strip whitespaces and control characters
+    # Strip surrounding whitespace and remove control characters.
     url = url.strip()
     url = re.sub(r'[\r\n\t]', '', url)
     return url
@@ -245,6 +265,8 @@ def predict_single():
             return jsonify({"error": "No URL provided in request body."}), 400
             
         raw_url = data["url"]
+        if not isinstance(raw_url, str):
+            return jsonify({"error": "URL must be provided as a string."}), 400
         url = sanitize_url(raw_url)
         
         if not url:
@@ -319,7 +341,13 @@ def predict_bulk():
                     if pd.isna(u):
                         continue
                     u = str(u).strip()
-                    act = str(row[label_col]).strip() if (label_col is not None and not pd.isna(row[label_col])) else None
+                    act = str(row[label_col]).strip().lower() if (label_col is not None and not pd.isna(row[label_col])) else None
+                    if act in {"1", "1.0", "phishing", "malicious"}:
+                        act = "1"
+                    elif act in {"0", "0.0", "safe", "legitimate", "benign"}:
+                        act = "0"
+                    else:
+                        act = None
                     urls_with_labels.append((u, act))
             except Exception as csv_err:
                 return jsonify({"error": f"Failed to parse CSV file: {str(csv_err)}"}), 400
