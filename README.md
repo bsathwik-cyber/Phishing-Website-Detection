@@ -132,7 +132,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Windows launcher scripts
 
-After setting up the backend virtual environment and running `npm install` in `frontend/`, you can use `run_phishguard.bat` from the repository root to start both development servers and open the browser.
+The Windows launchers perform first-run setup automatically. If you prefer manual setup, follow the backend and frontend steps above. The individual launchers can also be run separately after installing the required system runtimes.
 
 ## Training data and evaluation
 
