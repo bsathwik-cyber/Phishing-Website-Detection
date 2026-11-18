@@ -68,7 +68,7 @@ PhishGuard is intended for local development. The Flask API binds to `127.0.0.1:
 2. Download the repository ZIP and extract the complete folder. Do not run the batch files from inside the ZIP preview.
 3. Double-click `run_phishguard.bat`.
 4. The launcher opens separate Backend and Frontend windows. On the first run, the backend launcher creates `backend/venv`, installs the packages from `backend/requirements.txt`, and trains a local Random Forest model if compatible model artifacts are missing. The frontend launcher installs the exact locked packages using `npm ci` if `frontend/node_modules/next` is missing.
-5. The main launcher checks the backend health endpoint and the frontend page, then opens [http://localhost:3000](http://localhost:3000).
+5. The main launcher checks the backend health endpoint and the frontend page, then opens [http://127.0.0.1:3000](http://127.0.0.1:3000).
 
 The first run requires an internet connection for package installation and can take several minutes while dependencies and the model are prepared. Keep both service windows open while using PhishGuard. Close those windows or press Ctrl+C in each to stop the services. Subsequent starts reuse the virtual environment, npm packages and compatible model artifacts.
 
@@ -119,7 +119,7 @@ npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The Windows launcher explicitly binds Next.js to IPv4 loopback (`127.0.0.1`) so the browser and server use the same address.
 
 Node.js binaries and Python virtual environments are not bundled with this repository. If a manual `npm run dev` reports that `next` is not recognised, run `npm ci` from the `frontend/` directory first. If the backend launcher reports that its virtual environment is missing, rerun `run_backend.bat` from the project root; it creates and installs that environment automatically.
 
