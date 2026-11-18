@@ -122,6 +122,8 @@ def generate_phishing_urls():
     return list(set(urls))
 
 def main():
+    # Keep the synthetic sample reproducible for development and testing.
+    random.seed(42)
     print("Generating synthetic URL dataset...")
     safe_urls = generate_safe_urls()
     phishing_urls = generate_phishing_urls()
