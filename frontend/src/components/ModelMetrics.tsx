@@ -16,6 +16,10 @@ interface ModelMetricsResponse {
   f1_score: number;
   cross_validation: number;
   cv_std: number;
+  status?: "available" | "unavailable";
+  message?: string;
+  evaluation_note?: string;
+  evaluation_dataset?: string;
 }
 
 interface ConfusionMatrixResponse {
@@ -78,7 +82,29 @@ export default function ModelMetrics({ refreshTrigger, addNotification }: ModelM
     );
   }
 
-  if (!metrics) return null;
+  if (metrics?.status === "unavailable") {
+    return (
+      <Card className="p-8 border-cyber-warning/30 bg-cyber-warning/5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-6 h-6 text-cyber-warning shrink-0" />
+          <div>
+            <h3 className="font-bold text-gray-200">Model evaluation is unavailable</h3>
+            <p className="text-sm text-gray-400 mt-2">
+              {metrics.message || "Train the local Random Forest model to generate evaluation metrics."}
+            </p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!metrics) {
+    return (
+      <Card className="p-8">
+        <p className="text-sm text-gray-400">Model evaluation metrics have not been generated yet.</p>
+      </Card>
+    );
+  }
 
   const tn = confusionMatrix?.tn ?? 0;
   const fp = confusionMatrix?.fp ?? 0;
@@ -147,7 +173,7 @@ export default function ModelMetrics({ refreshTrigger, addNotification }: ModelM
           <div className="p-3 rounded bg-cyber-cyan/5 border border-cyber-cyan/10 text-xs text-gray-400 flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-cyber-cyan shrink-0" />
             <span>
-              <strong>Cross Validation Performance:</strong> 5-fold cross-validation mean accuracy is{" "}
+              <strong>Cross Validation Performance:</strong> 3-fold cross-validation mean accuracy is{" "}
               <strong className="text-cyber-cyan">{metrics.cross_validation.toFixed(2)}%</strong>{" "}
               (std dev: {metrics.cv_std.toFixed(2)}%).
             </span>
@@ -156,7 +182,7 @@ export default function ModelMetrics({ refreshTrigger, addNotification }: ModelM
           <div className="p-3 rounded bg-slate-900/40 border border-cyber-border/40 text-2xs text-gray-400 flex items-start gap-2 italic">
             <Info className="w-3.5 h-3.5 text-cyber-cyan shrink-0 mt-0.5" />
             <span>
-              Performance metrics are based on the validation dataset and may vary when analyzing real-world URLs.
+              {metrics.evaluation_note || "These results describe the supplied evaluation dataset and do not guarantee real-world phishing detection performance."}
             </span>
           </div>
         </div>
@@ -171,7 +197,7 @@ export default function ModelMetrics({ refreshTrigger, addNotification }: ModelM
               Confusion Matrix Grid
             </CardTitle>
             <p className="text-xs text-gray-400 mb-4">
-              Breakdown of predictions on the test set partition ({totalInstances} URLs).
+              Breakdown of scan results with supplied reference labels ({totalInstances} URLs).
             </p>
           </div>
 
@@ -182,7 +208,7 @@ export default function ModelMetrics({ refreshTrigger, addNotification }: ModelM
                 Confusion Matrix Available After Model Evaluation
               </div>
               <p className="text-2xs text-gray-500 mt-1">
-                Please perform model training or upload a dataset with actual labels.
+                Import a labelled CSV to calculate this matrix from its reference labels.
               </p>
             </CardContent>
           ) : (
