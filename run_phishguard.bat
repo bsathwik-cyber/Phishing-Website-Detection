@@ -92,14 +92,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\wait_for_servi
 if errorlevel 1 (
     echo.
     echo Startup was not confirmed. Check both service windows for errors.
-    echo Once both services are running, open http://localhost:3000 manually.
+    echo Once both services are running, open http://127.0.0.1:3000 manually.
     pause
     exit /b 1
 )
 
 echo.
 echo PhishGuard is running:
-echo   Frontend: http://localhost:3000
+echo   Frontend: http://127.0.0.1:3000
 echo   Backend:  http://127.0.0.1:5001
 echo.
 echo Keep both service windows open.
