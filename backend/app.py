@@ -213,6 +213,16 @@ def get_prediction_details(url):
     }
 
 
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    """Lightweight readiness endpoint for the local launcher."""
+    return jsonify({
+        "status": "ok",
+        "model_loaded": MODEL is not None,
+        "metrics_available": bool(METRICS) and METRICS.get("status") != "unavailable"
+    })
+
+
 # --- ENDPOINTS ---
 
 @app.route("/api/predict", methods=["POST"])

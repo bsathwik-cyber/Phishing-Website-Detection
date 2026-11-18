@@ -60,7 +60,19 @@ Node.js binaries and Python virtual environments are not bundled with this repos
 
 ## Run locally
 
-The application is intended for local development. The Flask service binds to `127.0.0.1:5001`, and the Next.js development server uses port `3000`.
+PhishGuard is intended for local development. The Flask API binds to `127.0.0.1:5001`; the Next.js development server uses port `3000`.
+
+### Windows — recommended first run
+
+1. Install [Python 3.11](https://www.python.org/downloads/) and [Node.js 20.9 or newer](https://nodejs.org/). Make sure npm is included with the Node.js installer and Python is available from the Windows Python Launcher (`py`) or PATH.
+2. Download the repository ZIP and extract the complete folder. Do not run the batch files from inside the ZIP preview.
+3. Double-click `run_phishguard.bat`.
+4. The launcher opens separate Backend and Frontend windows. On the first run, the backend launcher creates `backend/venv`, installs the packages from `backend/requirements.txt`, and trains a local Random Forest model if compatible model artifacts are missing. The frontend launcher installs the exact locked packages using `npm ci` if `frontend/node_modules/next` is missing.
+5. The main launcher checks the backend health endpoint and the frontend page, then opens [http://localhost:3000](http://localhost:3000).
+
+The first run requires an internet connection for package installation and can take several minutes while dependencies and the model are prepared. Keep both service windows open while using PhishGuard. Close those windows or press Ctrl+C in each to stop the services. Subsequent starts reuse the virtual environment, npm packages and compatible model artifacts.
+
+You can also run `run_backend.bat` or `run_frontend.bat` separately. Each script checks its runtime and installs its own missing project dependencies before starting.
 
 ### 1. Clone the repository
 
@@ -69,7 +81,7 @@ git clone https://github.com/bsathwik-cyber/Phishing-Website-Detection.git
 cd Phishing-Website-Detection
 ```
 
-### 2. Set up the backend
+### 2. Manual backend setup
 
 Windows PowerShell:
 
@@ -80,6 +92,7 @@ py -3.11 -m venv venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python train_model.py
+python app.py
 ```
 
 macOS / Linux:
@@ -91,48 +104,26 @@ source venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python train_model.py
-```
-
-Training generates `backend/dataset.csv` when no dataset is present and writes locally generated artifacts to `backend/model/`:
-
-- `phishing_model.pkl`
-- `model_metrics.json`
-
-These are local build outputs and are intentionally ignored by Git. On the first backend start, the application also attempts to train the model if the model file is missing.
-
-After pulling this version, remove any older local model artifacts and retrain once because URL feature extraction has been corrected. From the repository root:
-
-```powershell
-Remove-Item backend/model/phishing_model.pkl, backend/model/model_metrics.json -ErrorAction SilentlyContinue
-cd backend
-python train_model.py
-```
-
-### 3. Start the Flask API
-
-From the `backend/` directory, with the virtual environment activated:
-
-```bash
 python app.py
 ```
 
-The API listens at `http://127.0.0.1:5001`.
+The Flask API listens at `http://127.0.0.1:5001`.
 
-### 4. Set up and start the frontend
+### 3. Manual frontend setup
 
 Open a second terminal:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Windows launcher scripts
+Node.js binaries and Python virtual environments are not bundled with this repository. If a manual `npm run dev` reports that `next` is not recognised, run `npm ci` from the `frontend/` directory first. If the backend launcher reports that its virtual environment is missing, rerun `run_backend.bat` from the project root; it creates and installs that environment automatically.
 
-After setting up the backend virtual environment and running `npm install` in `frontend/`, you can use `run_phishguard.bat` from the repository root to start both development servers and open the browser.
+Training writes local artifacts to `backend/model/` and generates `backend/dataset.csv` when no dataset is supplied. These files are ignored by Git.
 
 ## Training data and evaluation
 
@@ -184,6 +175,7 @@ Base URL: `http://127.0.0.1:5001`
 | GET | `/api/history` | Search, sort, and paginate local scan history |
 | GET | `/api/stats` | Retrieve history summary data |
 | GET | `/api/model-metrics` | Retrieve training/evaluation metrics |
+| GET | `/api/health` | Check local backend readiness and model availability |
 | GET | `/api/dashboard/stats` | Retrieve dashboard summaries |
 | GET | `/api/dashboard/feature-importance` | Retrieve Random Forest feature importances |
 | GET | `/api/dashboard/confusion-matrix` | Calculate matrix from stored scans with supplied labels |
