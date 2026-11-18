@@ -250,7 +250,7 @@ export default function ModelMetrics({ refreshTrigger, addNotification }: ModelM
           )}
 
           <div className="mt-4 p-3 bg-cyber-darker border border-cyber-border rounded text-2xs text-gray-400">
-            * Random Forest Hyperparameters: <code>n_estimators=300</code>, <code>max_depth=25</code>, <code>random_state=42</code>
+            * Hyperparameters are selected by GridSearchCV using the training partition. Fixed random seed: 42.
           </div>
         </Card>
 
