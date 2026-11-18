@@ -1,0 +1,68 @@
+name: Build downloadable demo model
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/feature_extractor.py"
+      - "backend/generate_dataset.py"
+      - "backend/train_model.py"
+      - "backend/model-requirements.txt"
+      - "docs/model-card.md"
+      - ".github/workflows/build-demo-model.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned model dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/model-requirements.txt
+
+      - name: Train Random Forest model
+        run: python backend/train_model.py
+
+      - name: Package model, metrics, model card, and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp backend/model/phishing_model.pkl dist/
+          cp backend/model/model_metrics.json dist/
+          cp docs/model-card.md dist/MODEL_CARD.md
+          cp -f /dev/null dist/SHA256SUMS.txt
+          (cd dist && sha256sum phishing_model.pkl model_metrics.json > SHA256SUMS.txt)
+          cat > dist/INSTALL_MODEL.txt <<'EOF'
+          PHISHGUARD MODEL INSTALLATION
+          
+          1. Extract this ZIP.
+          2. Install the pinned model dependencies from the repository root:
+             python -m pip install -r backend/model-requirements.txt
+          3. Copy phishing_model.pkl and model_metrics.json to backend/model/.
+          4. Start the Flask backend.
+          
+          This model is trained on synthetic URL examples. Its metrics are not
+          representative of real-world phishing detection accuracy.
+          EOF
+          (cd dist && zip -9 ../phishguard-trained-model.zip             phishing_model.pkl model_metrics.json MODEL_CARD.md SHA256SUMS.txt INSTALL_MODEL.txt)
+
+      - name: Upload downloadable model bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: phishguard-trained-model
+          path: phishguard-trained-model.zip
+          if-no-files-found: error
+          retention-days: 90
