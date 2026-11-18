@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $backendUrl = "http://127.0.0.1:5001/api/health"
-$frontendUrl = "http://localhost:3000"
+$frontendUrl = "http://127.0.0.1:3000"
 $timeoutMinutes = 20
 $deadline = (Get-Date).AddMinutes($timeoutMinutes)
 $backendReady = $false
