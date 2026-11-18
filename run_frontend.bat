@@ -67,11 +67,11 @@ if not exist "node_modules\.bin\next.cmd" (
 )
 
 echo.
-echo Starting Next.js at http://localhost:3000
+echo Starting Next.js at http://127.0.0.1:3000
 echo Keep this window open while using PhishGuard.
 echo Press Ctrl+C to stop the frontend.
 echo.
-call npm run dev -- --port 3000
+call npm run dev -- --hostname 127.0.0.1 --port 3000
 
 if errorlevel 1 (
     echo.
