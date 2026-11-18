@@ -175,7 +175,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="mt-auto border-t border-cyber-border/30 bg-cyber-darker/60 py-6 text-center text-xs text-gray-500 font-mono">
         <div>PhishGuard Local Threat Detection Service. Running entirely on Localhost.</div>
-        <div className="text-gray-600 mt-1">Random Forest Classifier | n_estimators: 300 | max_depth: 25</div>
+        <div className="text-gray-600 mt-1">Model settings are selected during training; scan history is stored locally.</div>
       </footer>
 
       {/* Toast Notification Manager */}
