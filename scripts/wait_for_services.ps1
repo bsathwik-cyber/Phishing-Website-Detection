@@ -26,7 +26,7 @@ while ((Get-Date) -lt $deadline) {
     }
 
     try {
-        $response = Invoke-WebRequest -Uri $frontendUrl -TimeoutSec 3
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $frontendUrl -TimeoutSec 3
         if ($response.StatusCode -eq 200 -and $response.Content -match "PhishGuard") {
             $frontendReady = $true
         }
