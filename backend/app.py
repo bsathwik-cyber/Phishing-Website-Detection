@@ -32,6 +32,11 @@ MODEL = None
 METRICS = None
 FEATURE_NAMES = []
 
+
+class ModelUnavailableError(RuntimeError):
+    """Raised when the Random Forest model cannot serve predictions."""
+
+
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BACKEND_DIR, "model", "phishing_model.pkl")
 METRICS_PATH = os.path.join(BACKEND_DIR, "model", "model_metrics.json")
@@ -150,63 +155,53 @@ def sanitize_url(url):
     return url
 
 def get_prediction_details(url):
-    """
-    Runs URL through the model and computes risk category, confidence, and security recommendations.
-    Includes a heuristic rules fallback if the ML model is not loaded.
-    """
-    # Extract features
+    """Classify a URL using the trained Random Forest model."""
+    if MODEL is None:
+        raise ModelUnavailableError(
+            "The Random Forest model is unavailable. Check the backend training log and run python train_model.py."
+        )
+
     features = extract_features(url)
-    
-    # 1. Prediction using Model if loaded, else use heuristic rules fallback
-    if MODEL is not None:
-        try:
-            # Convert feature dict into DataFrame with correct column order
-            input_data = pd.DataFrame([features])[FEATURE_NAMES]
-            # Predict probabilities (class 0: Safe, class 1: Phishing)
-            probabilities = MODEL.predict_proba(input_data)[0]
-            p_phish = probabilities[1]
-        except Exception as e:
-            print(f"Error predicting with ML model: {str(e)}. Falling back to heuristic rules.")
-            p_phish = calculate_heuristic_risk(features)
-    else:
-        p_phish = calculate_heuristic_risk(features)
-        
-    # Determine Category, Confidence, and Risk Level
-    # We map the continuous probability space to 3 categories:
-    # p_phish < 0.35 -> Safe, Low Risk
-    # 0.35 <= p_phish < 0.65 -> Suspicious, Medium Risk
-    # p_phish >= 0.65 -> Phishing, High Risk
+    try:
+        input_data = pd.DataFrame([features])[FEATURE_NAMES]
+        class_probabilities = MODEL.predict_proba(input_data)[0]
+        classes = list(MODEL.classes_)
+        if 1 not in classes or 0 not in classes:
+            raise ValueError("The loaded model does not contain both expected classes (0 and 1).")
+        p_phish = float(class_probabilities[classes.index(1)])
+    except Exception as prediction_error:
+        raise ModelUnavailableError(
+            f"The Random Forest model could not evaluate this URL: {prediction_error}"
+        ) from prediction_error
+
     if p_phish < 0.35:
         prediction = "Safe"
         confidence = (1 - p_phish) * 100
         risk_level = "Low"
         recommendations = [
-            "This URL is classified as Safe. The URL features match standard trustworthy domains.",
-            "Verify the connection has a valid SSL certificate (HTTPS indicator in address bar).",
-            "Always inspect the domain name spelling to avoid lookalike domains (typosquatting).",
-            "Continue using standard browser protection and verify authentication pages before entering passwords."
+            "This URL has a low score from the URL-feature classifier; this does not guarantee that the destination is safe.",
+            "Check the exact domain spelling and confirm the link came from a trusted source.",
+            "Use browser protection and avoid entering sensitive information when you are unsure."
         ]
     elif p_phish < 0.65:
         prediction = "Suspicious"
         confidence = max(p_phish, 1 - p_phish) * 100
         risk_level = "Medium"
         recommendations = [
-            "This URL is flagged as Suspicious. It exhibits features commonly seen in phishing attempts (e.g., suspicious keywords or special character counts).",
-            "DO NOT enter passwords, credit card numbers, or personal details on this webpage.",
-            "If this link was received via email, SMS, or chat, verify the identity of the sender through an independent channel.",
-            "Inspect the domain name carefully. Check if it is a subdomain of an unfamiliar top-level domain."
+            "This URL has a borderline score from the URL-feature classifier.",
+            "Do not enter credentials or payment information until you independently verify the destination.",
+            "Check the domain spelling and confirm the sender through a separate trusted channel."
         ]
     else:
         prediction = "Phishing"
         confidence = p_phish * 100
         risk_level = "High"
         recommendations = [
-            "DANGER: This URL is classified as Phishing! It strongly exhibits signature patterns of malicious spoofed sites.",
-            "CLOSE the browser tab immediately to protect your session.",
-            "DO NOT download any files, click links, or fill out forms on this website.",
-            "If you entered credentials, change your passwords on the real website immediately and enable Two-Factor Authentication (2FA)."
+            "This URL has a high score from the URL-feature classifier and should be treated with caution.",
+            "Do not enter credentials, download files, or submit personal information.",
+            "Verify the destination using the organisation's known official website or contact channel."
         ]
-        
+
     return {
         "prediction": prediction,
         "probability_score": round(p_phish, 4),
@@ -216,40 +211,6 @@ def get_prediction_details(url):
         "recommendations": recommendations
     }
 
-def calculate_heuristic_risk(features):
-    """
-    Computes heuristic phishing probability based on URL features as a fallback classifier.
-    """
-    p_phish = 0.1
-    
-    # Feature weights mirroring model characteristics
-    if features.get("tld_risk_score", 0.5) > 0.6:
-        p_phish += 0.35
-    elif features.get("tld_risk_score", 0.5) < 0.2:
-        p_phish -= 0.1
-        
-    if features.get("keywords_count", 0) > 0:
-        p_phish += min(0.4, 0.2 * features["keywords_count"])
-        
-    if features.get("ip_present", 0) > 0:
-        p_phish += 0.45
-        
-    if features.get("at_present", 0) > 0:
-        p_phish += 0.35
-        
-    if features.get("double_slash_present", 0) > 0:
-        p_phish += 0.25
-        
-    if features.get("hyphens_count", 0) > 2:
-        p_phish += 0.15
-        
-    if features.get("url_length", 0) > 75:
-        p_phish += 0.15
-        
-    if features.get("https_present", 1) == 0:
-        p_phish += 0.15
-        
-    return min(0.99, max(0.01, p_phish))
 
 # --- ENDPOINTS ---
 
@@ -291,6 +252,8 @@ def predict_single():
             "recommendations": res["recommendations"]
         })
         
+    except ModelUnavailableError as e:
+        return jsonify({"error": str(e)}), 503
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
@@ -411,6 +374,8 @@ def predict_bulk():
             "results": results
         })
         
+    except ModelUnavailableError as e:
+        return jsonify({"error": str(e)}), 503
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
