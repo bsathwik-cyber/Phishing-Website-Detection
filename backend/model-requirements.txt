@@ -1,0 +1,5 @@
+# Exact versions used for the downloadable PhishGuard demo model.
+# scikit-learn pickle files are version-sensitive.
+numpy==2.3.5
+pandas==2.2.3
+scikit-learn==1.8.0
