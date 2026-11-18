@@ -1,21 +1,33 @@
-# Python
-backend/venv/
-venv/
+# Python runtime and generated artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+backend/venv/
+
+# Generated training data, model artifacts, and local scan history
+backend/dataset.csv
+backend/phishguard.db
+backend/phishguard.db-*
+backend/model/*.pkl
+backend/model/model_metrics.json
 
 # Node / Next.js
 frontend/node_modules/
 frontend/.next/
+frontend/out/
 
 # Environment / secrets
 .env
 .env.*
 !.env.example
 
-# IDE
+# IDE / operating system
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
 
 # Temporary files
 scratch/
