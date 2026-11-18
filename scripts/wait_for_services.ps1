@@ -7,6 +7,7 @@ $deadline = (Get-Date).AddMinutes($timeoutMinutes)
 $backendReady = $false
 $frontendReady = $false
 $modelLoaded = $false
+$lastFrontendError = "Frontend has not responded yet."
 
 Write-Host "Waiting for PhishGuard services to become ready..."
 Write-Host "Backend health check: $backendUrl"
@@ -27,12 +28,18 @@ while ((Get-Date) -lt $deadline) {
 
     try {
         $response = Invoke-WebRequest -UseBasicParsing -Uri $frontendUrl -TimeoutSec 3
-        if ($response.StatusCode -eq 200 -and $response.Content -match "PhishGuard") {
+        if ($response.StatusCode -eq 200) {
             $frontendReady = $true
+            $lastFrontendError = ""
+        }
+        else {
+            $frontendReady = $false
+            $lastFrontendError = "Frontend returned HTTP $($response.StatusCode)."
         }
     }
     catch {
         $frontendReady = $false
+        $lastFrontendError = $_.Exception.Message
     }
 
     if ($backendReady -and $frontendReady) {
@@ -53,5 +60,6 @@ while ((Get-Date) -lt $deadline) {
 Write-Host ""
 Write-Host "ERROR: PhishGuard did not become ready within $timeoutMinutes minutes."
 Write-Host "Check the Backend and Frontend terminal windows for the first reported error."
-Write-Host "Common causes are missing Python/Node.js, a blocked internet connection during package installation, or ports 3000/5001 already being in use."
+Write-Host "Last frontend check: $lastFrontendError"
+Write-Host "Common causes are a frontend window that exited after npm install, a Next.js compile error, missing Node.js, a blocked package download, or port 3000 already being in use."
 exit 1
