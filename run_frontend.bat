@@ -51,9 +51,9 @@ if not exist "node_modules\.bin\next.cmd" (
     echo Installing frontend dependencies with npm ci.
     echo This may take a few minutes on the first run...
     if exist "package-lock.json" (
-        npm ci
+        call npm ci
     ) else (
-        npm install
+        call npm install
     )
 
     if errorlevel 1 (
@@ -71,7 +71,7 @@ echo Starting Next.js at http://localhost:3000
 echo Keep this window open while using PhishGuard.
 echo Press Ctrl+C to stop the frontend.
 echo.
-npm run dev -- --port 3000
+call npm run dev -- --port 3000
 
 if errorlevel 1 (
     echo.
